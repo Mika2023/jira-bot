@@ -13,7 +13,7 @@
 Требуется Python 3.10+.
 
 1. Создайте Telegram-бота через [@BotFather](https://t.me/BotFather), скопируйте токен. Напишите боту `/start`. Укажите `TELEGRAM_CHAT_ID` личного чата или группы (для группы добавьте бота и используйте ID группы).
-2. Узнайте URL Jira и ID доски. ID обычно виден в URL доски, например `/boards/42`.
+2. Скопируйте полный адрес доски Jira из браузера — он и задаёт доску, например `https://jira.example.com/jira/software/c/projects/PROJ/boards/42` (для старой доски подойдёт `https://jira.example.com/secure/RapidBoard.jspa?rapidView=42`, для REST — `https://jira.example.com/rest/agile/1.0/board/42/issue`). Отдельные переменные для хоста и ID доски не нужны: базовый URL Jira и номер доски бот определяет из этого адреса сам.
 3. Создайте локальные настройки и заполните значения:
 
    ```bash
@@ -39,8 +39,7 @@
 
 | Переменная | Обязательна | По умолчанию | Назначение |
 |---|---:|---|---|
-| `JIRA_BASE_URL` | да | — | Базовый URL Jira, без завершающего `/` |
-| `JIRA_BOARD_ID` | да | — | ID доски |
+| `JIRA_BOARD_URL` | да | — | Полный адрес доски Jira из браузера; из него определяются базовый URL Jira и ID доски |
 | `JIRA_STATUS` | нет | `Ревью СА выполнено` | Точное имя статуса для JQL-фильтра |
 | `JIRA_AUTH_MODE` | нет | `basic` | `basic`, `bearer`, `cookie` или `none` |
 | `JIRA_USERNAME` / `JIRA_PASSWORD` | для `basic` | — | Логин и пароль/API token Jira |
@@ -52,6 +51,16 @@
 | `REQUEST_TIMEOUT_SECONDS` | нет | `20` | Таймаут HTTP-запросов |
 | `DATABASE_PATH` | нет | `data/seen_issues.sqlite3` | Путь к SQLite-базе состояния |
 | `NOTIFY_EXISTING_ON_START` | нет | `false` | Уведомлять ли обо всех совпадениях при самом первом запуске |
+
+### Форматы `JIRA_BOARD_URL`
+
+| Что скопировано | Пример |
+|---|---|
+| Страница доски (Jira Cloud) | `https://company.atlassian.net/jira/software/c/projects/PROJ/boards/42` |
+| Страница доски (Jira Data Center, старый интерфейс) | `https://jira.example.com/secure/RapidBoard.jspa?rapidView=42` |
+| REST-эндпоинт доски | `https://jira.example.com/jira/rest/agile/1.0/board/42/issue` |
+
+Если Jira развёрнута с context path (например, `https://host/jira/...`), используйте REST-форму адреса: тогда префикс `/jira` попадёт и в ссылки на задачи в Telegram. В остальных случаях ссылки строятся от корня хоста.
 
 Бот опрашивает Jira раз в интервал и отправляет только одну нотификацию на ключ задачи. Как и любой polling, он не может обнаружить событие, которое появилось и исчезло между опросами.
 
