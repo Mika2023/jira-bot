@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from main import Config, SeenIssues, check_once
+from main import Config, JiraClient, SeenIssues, check_once
 
 
 def config_for(path: Path, notify_existing: bool = False) -> Config:
@@ -15,6 +15,7 @@ def config_for(path: Path, notify_existing: bool = False) -> Config:
         jira_username=None,
         jira_password=None,
         jira_token=None,
+        jira_cookie=None,
         telegram_bot_token="not-a-real-token",
         telegram_chat_id="123",
         poll_interval=60,
@@ -103,6 +104,35 @@ class ConfigurationTests(unittest.TestCase):
         with patch.dict("os.environ", env, clear=True):
             config = Config.from_env()
         self.assertEqual(config.jira_status, "Ready for QA")
+
+    def test_cookie_auth_uses_cookie_header(self):
+        cookie = "JSESSIONID=session-secret; atlassian.xsrf.token=csrf-secret"
+        env = {
+            "JIRA_BASE_URL": "https://jira.example.test",
+            "JIRA_BOARD_ID": "42",
+            "JIRA_AUTH_MODE": "cookie",
+            "JIRA_COOKIE": cookie,
+            "TELEGRAM_BOT_TOKEN": "token",
+            "TELEGRAM_CHAT_ID": "123",
+        }
+        with patch.dict("os.environ", env, clear=True):
+            config = Config.from_env()
+        client = JiraClient(config)
+        self.assertEqual(client.session.headers["Cookie"], cookie)
+        self.assertIsNone(client.session.auth)
+        client.session.close()
+
+    def test_cookie_auth_requires_cookie_value(self):
+        env = {
+            "JIRA_BASE_URL": "https://jira.example.test",
+            "JIRA_BOARD_ID": "42",
+            "JIRA_AUTH_MODE": "cookie",
+            "TELEGRAM_BOT_TOKEN": "token",
+            "TELEGRAM_CHAT_ID": "123",
+        }
+        with patch.dict("os.environ", env, clear=True):
+            with self.assertRaisesRegex(ValueError, "JIRA_COOKIE is required"):
+                Config.from_env()
 
 
 if __name__ == "__main__":

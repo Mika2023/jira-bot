@@ -31,6 +31,7 @@ class Config:
     jira_username: str | None
     jira_password: str | None
     jira_token: str | None
+    jira_cookie: str | None
     telegram_bot_token: str
     telegram_chat_id: str
     poll_interval: int
@@ -47,16 +48,19 @@ class Config:
             return value
 
         auth_mode = os.getenv("JIRA_AUTH_MODE", "basic").strip().lower()
-        if auth_mode not in {"basic", "bearer", "none"}:
-            raise ConfigurationError("JIRA_AUTH_MODE must be basic, bearer, or none")
+        if auth_mode not in {"basic", "bearer", "cookie", "none"}:
+            raise ConfigurationError("JIRA_AUTH_MODE must be basic, bearer, cookie, or none")
 
         username = os.getenv("JIRA_USERNAME", "").strip() or None
         password = os.getenv("JIRA_PASSWORD", "").strip() or None
         token = os.getenv("JIRA_TOKEN", "").strip() or None
+        jira_cookie = os.getenv("JIRA_COOKIE", "").strip() or None
         if auth_mode == "basic" and not (username and password):
             raise ConfigurationError("JIRA_USERNAME and JIRA_PASSWORD are required for basic auth")
         if auth_mode == "bearer" and not token:
             raise ConfigurationError("JIRA_TOKEN is required for bearer auth")
+        if auth_mode == "cookie" and not jira_cookie:
+            raise ConfigurationError("JIRA_COOKIE is required for cookie auth")
 
         try:
             poll_interval = int(os.getenv("POLL_INTERVAL_SECONDS", "60"))
@@ -74,6 +78,7 @@ class Config:
             jira_username=username,
             jira_password=password,
             jira_token=token,
+            jira_cookie=jira_cookie,
             telegram_bot_token=required("TELEGRAM_BOT_TOKEN"),
             telegram_chat_id=required("TELEGRAM_CHAT_ID"),
             poll_interval=poll_interval,
@@ -131,6 +136,8 @@ class JiraClient:
             self.session.auth = (config.jira_username, config.jira_password)
         elif config.jira_auth_mode == "bearer":
             self.session.headers["Authorization"] = f"Bearer {config.jira_token}"
+        elif config.jira_auth_mode == "cookie":
+            self.session.headers["Cookie"] = config.jira_cookie
 
     def matching_issues(self) -> list[dict[str, Any]]:
         """Read all issues currently on the configured board and in the configured status."""

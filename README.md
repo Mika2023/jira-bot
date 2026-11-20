@@ -6,7 +6,7 @@
 
 Бот должен запускаться на компьютере или сервере, у которого **уже есть сетевой доступ к Jira**: например, на рабочем компьютере с подключённым VPN или на сервере внутри корпоративной сети. Сам бот не подключает корпоративный VPN и не должен хранить логин/пароль от VPN. Если Jira недоступна из процесса бота, нужно настроить VPN/маршрут/DNS на хосте, где он работает.
 
-Учетные данные Jira и Telegram задаются через переменные окружения (локально — файл `.env`, который исключён из Git). Не добавляйте секреты в исходный код или коммиты. Для Jira Cloud обычно используется email + API token с `JIRA_AUTH_MODE=basic`; для Jira Data Center можно использовать username/password или PAT с `JIRA_AUTH_MODE=bearer` — конкретный способ зависит от настройки вашей Jira.
+Учётные данные Jira и Telegram задаются через переменные окружения (локально — файл `.env`, который исключён из Git). Не добавляйте секреты в исходный код или коммиты. Для Jira Cloud обычно используется email + API token с `JIRA_AUTH_MODE=basic`; для Jira Data Center можно использовать username/password или PAT с `JIRA_AUTH_MODE=bearer`. Если ваша Jira разрешает доступ по сессионным cookies, можно использовать `JIRA_AUTH_MODE=cookie` и передать полный заголовок Cookie через `JIRA_COOKIE`. Cookie — секрет уровня пароля, он может истечь; не пересылайте его в чат и не коммитьте.
 
 ## Быстрый запуск
 
@@ -42,9 +42,10 @@
 | `JIRA_BASE_URL` | да | — | Базовый URL Jira, без завершающего `/` |
 | `JIRA_BOARD_ID` | да | — | ID доски |
 | `JIRA_STATUS` | нет | `Ревью СА выполнено` | Точное имя статуса для JQL-фильтра |
-| `JIRA_AUTH_MODE` | нет | `basic` | `basic`, `bearer` или `none` |
+| `JIRA_AUTH_MODE` | нет | `basic` | `basic`, `bearer`, `cookie` или `none` |
 | `JIRA_USERNAME` / `JIRA_PASSWORD` | для `basic` | — | Логин и пароль/API token Jira |
 | `JIRA_TOKEN` | для `bearer` | — | Jira Personal Access Token |
+| `JIRA_COOKIE` | для `cookie` | — | Полное значение HTTP-заголовка Cookie из сессии Jira; секрет, может истечь |
 | `TELEGRAM_BOT_TOKEN` | да | — | Секретный токен бота |
 | `TELEGRAM_CHAT_ID` | да | — | Получатель уведомлений |
 | `POLL_INTERVAL_SECONDS` | нет | `60` | Интервал опроса (минимум 5 секунд) |
