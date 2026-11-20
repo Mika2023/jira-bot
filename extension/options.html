@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <title>Jira board watcher — настройки</title>
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <main>
+      <h1>Jira board watcher</h1>
+      <p class="lead">
+        Расширение опрашивает доску Jira и показывает системное уведомление Chrome, когда задача
+        появляется на доске в выбранном статусе. Telegram не используется, поэтому блокировки
+        Bot API для российских адресов не мешают.
+      </p>
+
+      <form id="settings">
+        <label class="field">
+          <span>Адрес доски Jira</span>
+          <input
+            id="boardUrl"
+            name="boardUrl"
+            type="text"
+            placeholder="https://jira.example.com/jira/software/c/projects/PROJ/boards/42"
+            required
+          />
+          <small>
+            Скопируйте адрес доски из браузера. Подойдут страница доски, старый адрес
+            <code>/secure/RapidBoard.jspa?rapidView=42</code> и REST-адрес
+            <code>/rest/agile/1.0/board/42/issue</code>.
+          </small>
+        </label>
+
+        <label class="field">
+          <span>Статус</span>
+          <input id="status" name="status" type="text" required />
+          <small>Точное название статуса, как в Jira. Например: «Ревью СА выполнено».</small>
+        </label>
+
+        <div class="row">
+          <label class="field">
+            <span>Интервал опроса, минут</span>
+            <input id="intervalMinutes" name="intervalMinutes" type="number" min="1" max="240" step="1" />
+          </label>
+
+          <label class="field">
+            <span>Аутентификация</span>
+            <select id="authMode" name="authMode">
+              <option value="session">Сессия браузера (Cookie)</option>
+              <option value="basic">Логин + пароль / API-токен</option>
+              <option value="bearer">Personal Access Token</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="auth-block" data-auth="basic">
+          <div class="row">
+            <label class="field">
+              <span>Логин или e-mail</span>
+              <input id="username" name="username" type="text" autocomplete="username" />
+            </label>
+            <label class="field">
+              <span>Пароль или API-токен</span>
+              <input id="password" name="password" type="password" autocomplete="current-password" />
+            </label>
+          </div>
+        </div>
+
+        <div class="auth-block" data-auth="bearer">
+          <label class="field">
+            <span>Personal Access Token</span>
+            <input id="token" name="token" type="password" autocomplete="off" />
+          </label>
+        </div>
+
+        <label class="field">
+          <span>Webhook, необязательно</span>
+          <input id="webhookUrl" name="webhookUrl" type="text" placeholder="https://…" />
+          <small>
+            Если задан, на этот адрес отправляется POST с JSON о новых задачах. Удобно, чтобы
+            переслать уведомление в корпоративный мессенджер.
+          </small>
+        </label>
+
+        <label class="checkbox">
+          <input id="notifyExistingOnStart" name="notifyExistingOnStart" type="checkbox" />
+          <span>Уведомить о задачах, которые уже находятся в этом статусе при первом запуске</span>
+        </label>
+
+        <div class="actions">
+          <button type="submit" class="primary">Сохранить</button>
+          <button type="button" id="test">Проверить подключение</button>
+          <button type="button" id="reset" class="danger">Сбросить состояние</button>
+        </div>
+      </form>
+
+      <p id="message" class="message" role="status"></p>
+      <p id="lastRun" class="last-run"></p>
+
+      <section class="notes">
+        <h2>Что важно знать</h2>
+        <ul>
+          <li>
+            Режим «Сессия браузера» ничего не хранит: запросы идут с теми же Cookie, что и
+            открытая вкладка Jira. Нужно быть залогиненной в Jira в этом же профиле Chrome и,
+            если Jira доступна только по корпоративному VPN, держать VPN включённым.
+          </li>
+          <li>
+            При первом запуске существующие задачи запоминаются без уведомлений, чтобы чат не
+            завалило. Повторно о задаче не сообщается 30 дней.
+          </li>
+          <li>
+            Логин, пароль и токен в режимах basic/bearer хранятся в профиле Chrome в открытом
+            виде — как и любые данные расширений. На общем компьютере лучше использовать сессию
+            браузера.
+          </li>
+        </ul>
+      </section>
+    </main>
+    <script type="module" src="options.js"></script>
+  </body>
+</html>

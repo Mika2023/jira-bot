@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "Jira board watcher",
+  "version": "1.0.0",
+  "description": "Показывает системное уведомление Chrome, когда на доске Jira появляется задача в выбранном статусе.",
+  "minimum_chrome_version": "102",
+  "permissions": ["storage", "alarms", "notifications"],
+  "host_permissions": ["https://*/*", "http://*/*"],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+  "action": {
+    "default_title": "Jira board watcher — настройки"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
