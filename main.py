@@ -5,6 +5,7 @@ from __future__ import annotations
 import html
 import logging
 import os
+import re
 import signal
 import sqlite3
 import threading
@@ -12,10 +13,20 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qs, urlsplit
 
 import requests
 
 LOG = logging.getLogger("jira_bot")
+
+# Examples of accepted board URLs:
+#   https://jira.example.com/jira/software/c/projects/PROJ/boards/42
+#   https://jira.example.com/jira/software/projects/PROJ/boards/42
+#   https://jira.example.com/secure/RapidBoard.jspa?rapidView=42
+#   https://jira.example.com/jira/rest/agile/1.0/board/42/issue
+_BOARD_API_RE = re.compile(r"^(?P<prefix>.*?)/rest/agile/1\.0/board/(?P<id>\d+)(?:/issue)?$")
+_BOARD_PAGE_RE = re.compile(r"/boards/(?P<id>\d+)(?:/board)?$")
+_LEGACY_BOARD_PATH = "/secure/RapidBoard.jspa"
 
 
 class ConfigurationError(ValueError):
@@ -23,7 +34,62 @@ class ConfigurationError(ValueError):
 
 
 @dataclass(frozen=True)
+class BoardLocation:
+    """A Jira board resolved from one full URL."""
+
+    base_url: str
+    board_id: str
+
+    @property
+    def issues_url(self) -> str:
+        return f"{self.base_url}/rest/agile/1.0/board/{self.board_id}/issue"
+
+
+def parse_board_url(raw_url: str) -> BoardLocation:
+    """Resolve a pasted board URL into a Jira base URL and board ID."""
+    url = (raw_url or "").strip()
+    if not url:
+        raise ConfigurationError("Required environment variable JIRA_BOARD_URL is not set")
+    if "://" not in url:
+        url = f"https://{url}"
+    parsed = urlsplit(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ConfigurationError(
+            "JIRA_BOARD_URL must be a full URL, for example "
+            "https://jira.example.com/jira/software/c/projects/PROJ/boards/42"
+        )
+    origin = f"{parsed.scheme}://{parsed.netloc}"
+    path = parsed.path.rstrip("/")
+
+    api_match = _BOARD_API_RE.match(path)
+    if api_match:
+        base_url = (origin + api_match.group("prefix")).rstrip("/")
+        return BoardLocation(base_url=base_url, board_id=api_match.group("id"))
+
+    if path.endswith(_LEGACY_BOARD_PATH):
+        board_id = parse_qs(parsed.query).get("rapidView", [""])[0].strip()
+        if not board_id.isdigit():
+            raise ConfigurationError(
+                "JIRA_BOARD_URL has no rapidView parameter; expected "
+                "https://jira.example.com/secure/RapidBoard.jspa?rapidView=42"
+            )
+        base_url = (origin + path[: -len(_LEGACY_BOARD_PATH)]).rstrip("/")
+        return BoardLocation(base_url=base_url, board_id=board_id)
+
+    page_match = _BOARD_PAGE_RE.search(path)
+    if page_match:
+        return BoardLocation(base_url=origin, board_id=page_match.group("id"))
+
+    raise ConfigurationError(
+        "Could not find a board ID in JIRA_BOARD_URL. Open the board in a browser and copy its "
+        "address (for example https://jira.example.com/jira/software/c/projects/PROJ/boards/42), "
+        "or use the REST URL https://jira.example.com/rest/agile/1.0/board/42/issue"
+    )
+
+
+@dataclass(frozen=True)
 class Config:
+    jira_board_url: str
     jira_base_url: str
     jira_board_id: str
     jira_status: str
@@ -31,6 +97,7 @@ class Config:
     jira_username: str | None
     jira_password: str | None
     jira_token: str | None
+    jira_cookie: str | None
     telegram_bot_token: str
     telegram_chat_id: str
     poll_interval: int
@@ -47,16 +114,19 @@ class Config:
             return value
 
         auth_mode = os.getenv("JIRA_AUTH_MODE", "basic").strip().lower()
-        if auth_mode not in {"basic", "bearer", "none"}:
-            raise ConfigurationError("JIRA_AUTH_MODE must be basic, bearer, or none")
+        if auth_mode not in {"basic", "bearer", "cookie", "none"}:
+            raise ConfigurationError("JIRA_AUTH_MODE must be basic, bearer, cookie, or none")
 
         username = os.getenv("JIRA_USERNAME", "").strip() or None
         password = os.getenv("JIRA_PASSWORD", "").strip() or None
         token = os.getenv("JIRA_TOKEN", "").strip() or None
+        jira_cookie = os.getenv("JIRA_COOKIE", "").strip() or None
         if auth_mode == "basic" and not (username and password):
             raise ConfigurationError("JIRA_USERNAME and JIRA_PASSWORD are required for basic auth")
         if auth_mode == "bearer" and not token:
             raise ConfigurationError("JIRA_TOKEN is required for bearer auth")
+        if auth_mode == "cookie" and not jira_cookie:
+            raise ConfigurationError("JIRA_COOKIE is required for cookie auth")
 
         try:
             poll_interval = int(os.getenv("POLL_INTERVAL_SECONDS", "60"))
@@ -66,14 +136,19 @@ class Config:
         if poll_interval < 5 or request_timeout < 1:
             raise ConfigurationError("POLL_INTERVAL_SECONDS must be >= 5 and REQUEST_TIMEOUT_SECONDS >= 1")
 
+        board_url = required("JIRA_BOARD_URL")
+        board = parse_board_url(board_url)
+
         return cls(
-            jira_base_url=required("JIRA_BASE_URL").rstrip("/"),
-            jira_board_id=required("JIRA_BOARD_ID"),
+            jira_board_url=board_url,
+            jira_base_url=board.base_url,
+            jira_board_id=board.board_id,
             jira_status=os.getenv("JIRA_STATUS", "Ревью СА выполнено").strip() or "Ревью СА выполнено",
             jira_auth_mode=auth_mode,
             jira_username=username,
             jira_password=password,
             jira_token=token,
+            jira_cookie=jira_cookie,
             telegram_bot_token=required("TELEGRAM_BOT_TOKEN"),
             telegram_chat_id=required("TELEGRAM_CHAT_ID"),
             poll_interval=poll_interval,
@@ -131,6 +206,8 @@ class JiraClient:
             self.session.auth = (config.jira_username, config.jira_password)
         elif config.jira_auth_mode == "bearer":
             self.session.headers["Authorization"] = f"Bearer {config.jira_token}"
+        elif config.jira_auth_mode == "cookie":
+            self.session.headers["Cookie"] = config.jira_cookie
 
     def matching_issues(self) -> list[dict[str, Any]]:
         """Read all issues currently on the configured board and in the configured status."""
@@ -232,7 +309,11 @@ def run() -> None:
 
     signal.signal(signal.SIGTERM, stop_handler)
     signal.signal(signal.SIGINT, stop_handler)
-    LOG.info("Jira board watcher started; status=%r, board=%s", config.jira_status, config.jira_board_id)
+    LOG.info(
+        "Jira board watcher started; status=%r, board=%s",
+        config.jira_status,
+        config.jira_board_url,
+    )
     try:
         while not stop_event.is_set():
             started = time.monotonic()

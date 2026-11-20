@@ -6,14 +6,14 @@
 
 Бот должен запускаться на компьютере или сервере, у которого **уже есть сетевой доступ к Jira**: например, на рабочем компьютере с подключённым VPN или на сервере внутри корпоративной сети. Сам бот не подключает корпоративный VPN и не должен хранить логин/пароль от VPN. Если Jira недоступна из процесса бота, нужно настроить VPN/маршрут/DNS на хосте, где он работает.
 
-Учетные данные Jira и Telegram задаются через переменные окружения (локально — файл `.env`, который исключён из Git). Не добавляйте секреты в исходный код или коммиты. Для Jira Cloud обычно используется email + API token с `JIRA_AUTH_MODE=basic`; для Jira Data Center можно использовать username/password или PAT с `JIRA_AUTH_MODE=bearer` — конкретный способ зависит от настройки вашей Jira.
+Учётные данные Jira и Telegram задаются через переменные окружения (локально — файл `.env`, который исключён из Git). Не добавляйте секреты в исходный код или коммиты. Для Jira Cloud обычно используется email + API token с `JIRA_AUTH_MODE=basic`; для Jira Data Center можно использовать username/password или PAT с `JIRA_AUTH_MODE=bearer`. Если ваша Jira разрешает доступ по сессионным cookies, можно использовать `JIRA_AUTH_MODE=cookie` и передать полный заголовок Cookie через `JIRA_COOKIE`. Cookie — секрет уровня пароля, он может истечь; не пересылайте его в чат и не коммитьте.
 
 ## Быстрый запуск
 
 Требуется Python 3.10+.
 
 1. Создайте Telegram-бота через [@BotFather](https://t.me/BotFather), скопируйте токен. Напишите боту `/start`. Укажите `TELEGRAM_CHAT_ID` личного чата или группы (для группы добавьте бота и используйте ID группы).
-2. Узнайте URL Jira и ID доски. ID обычно виден в URL доски, например `/boards/42`.
+2. Скопируйте полный адрес доски Jira из браузера — он и задаёт доску, например `https://jira.example.com/jira/software/c/projects/PROJ/boards/42` (для старой доски подойдёт `https://jira.example.com/secure/RapidBoard.jspa?rapidView=42`, для REST — `https://jira.example.com/rest/agile/1.0/board/42/issue`). Отдельные переменные для хоста и ID доски не нужны: базовый URL Jira и номер доски бот определяет из этого адреса сам.
 3. Создайте локальные настройки и заполните значения:
 
    ```bash
@@ -39,18 +39,28 @@
 
 | Переменная | Обязательна | По умолчанию | Назначение |
 |---|---:|---|---|
-| `JIRA_BASE_URL` | да | — | Базовый URL Jira, без завершающего `/` |
-| `JIRA_BOARD_ID` | да | — | ID доски |
+| `JIRA_BOARD_URL` | да | — | Полный адрес доски Jira из браузера; из него определяются базовый URL Jira и ID доски |
 | `JIRA_STATUS` | нет | `Ревью СА выполнено` | Точное имя статуса для JQL-фильтра |
-| `JIRA_AUTH_MODE` | нет | `basic` | `basic`, `bearer` или `none` |
+| `JIRA_AUTH_MODE` | нет | `basic` | `basic`, `bearer`, `cookie` или `none` |
 | `JIRA_USERNAME` / `JIRA_PASSWORD` | для `basic` | — | Логин и пароль/API token Jira |
 | `JIRA_TOKEN` | для `bearer` | — | Jira Personal Access Token |
+| `JIRA_COOKIE` | для `cookie` | — | Полное значение HTTP-заголовка Cookie из сессии Jira; секрет, может истечь |
 | `TELEGRAM_BOT_TOKEN` | да | — | Секретный токен бота |
 | `TELEGRAM_CHAT_ID` | да | — | Получатель уведомлений |
 | `POLL_INTERVAL_SECONDS` | нет | `60` | Интервал опроса (минимум 5 секунд) |
 | `REQUEST_TIMEOUT_SECONDS` | нет | `20` | Таймаут HTTP-запросов |
 | `DATABASE_PATH` | нет | `data/seen_issues.sqlite3` | Путь к SQLite-базе состояния |
 | `NOTIFY_EXISTING_ON_START` | нет | `false` | Уведомлять ли обо всех совпадениях при самом первом запуске |
+
+### Форматы `JIRA_BOARD_URL`
+
+| Что скопировано | Пример |
+|---|---|
+| Страница доски (Jira Cloud) | `https://company.atlassian.net/jira/software/c/projects/PROJ/boards/42` |
+| Страница доски (Jira Data Center, старый интерфейс) | `https://jira.example.com/secure/RapidBoard.jspa?rapidView=42` |
+| REST-эндпоинт доски | `https://jira.example.com/jira/rest/agile/1.0/board/42/issue` |
+
+Если Jira развёрнута с context path (например, `https://host/jira/...`), используйте REST-форму адреса: тогда префикс `/jira` попадёт и в ссылки на задачи в Telegram. В остальных случаях ссылки строятся от корня хоста.
 
 Бот опрашивает Jira раз в интервал и отправляет только одну нотификацию на ключ задачи. Как и любой polling, он не может обнаружить событие, которое появилось и исчезло между опросами.
 
